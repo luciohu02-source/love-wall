@@ -521,6 +521,114 @@
             background: #ff8fab;
         }
         
+        /* 数据管理样式 */
+        .data-management {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .data-btn {
+            background: linear-gradient(135deg, #6b95ff, #6bd5ff);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+            box-shadow: 0 4px 10px rgba(107, 149, 255, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .data-btn:hover {
+            background: linear-gradient(135deg, #6bd5ff, #6b95ff);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(107, 149, 255, 0.4);
+        }
+        
+        .data-btn.export {
+            background: linear-gradient(135deg, #6bff95, #6bd5ff);
+        }
+        
+        .data-btn.export:hover {
+            background: linear-gradient(135deg, #6bd5ff, #6bff95);
+        }
+        
+        #importFile {
+            display: none;
+        }
+        
+        /* 模态框样式 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal-content {
+            background-color: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+        }
+        
+        .modal h3 {
+            color: #ff6b95;
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+        }
+        
+        .modal p {
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .modal-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+        
+        .modal-btn.confirm {
+            background: #ff6b95;
+            color: white;
+        }
+        
+        .modal-btn.cancel {
+            background: #e0e0e0;
+            color: #333;
+        }
+        
+        .modal-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        
         @media (max-width: 768px) {
             .content {
                 flex-direction: column;
@@ -559,6 +667,21 @@
             .couple-names {
                 flex-direction: column;
                 gap: 10px;
+            }
+            
+            .data-management {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .data-btn {
+                width: 100%;
+                max-width: 250px;
+                justify-content: center;
+            }
+            
+            .modal-buttons {
+                flex-direction: column;
             }
         }
     </style>
@@ -654,8 +777,34 @@
             </div>
         </div>
         
+        <!-- 数据管理区域 -->
+        <div class="data-management">
+            <button class="data-btn" id="exportDataBtn">
+                <i class="fas fa-download"></i> 导出数据
+            </button>
+            <button class="data-btn export" id="importDataBtn">
+                <i class="fas fa-upload"></i> 导入数据
+            </button>
+            <button class="data-btn" id="resetDataBtn" style="background: linear-gradient(135deg, #ff6b6b, #ff8f6b);">
+                <i class="fas fa-trash-alt"></i> 重置数据
+            </button>
+            <input type="file" id="importFile" accept=".json">
+        </div>
+        
         <div class="footer">
             <p>我们的爱情留言墙 · 数据将永久保存在本地</p>
+        </div>
+    </div>
+
+    <!-- 确认重置模态框 -->
+    <div class="modal" id="resetModal">
+        <div class="modal-content">
+            <h3><i class="fas fa-exclamation-triangle"></i> 确认重置</h3>
+            <p>您确定要重置所有数据吗？这将删除所有照片、留言和设置，此操作不可撤销！</p>
+            <div class="modal-buttons">
+                <button class="modal-btn confirm" id="confirmResetBtn">确认重置</button>
+                <button class="modal-btn cancel" id="cancelResetBtn">取消</button>
+            </div>
         </div>
     </div>
 
@@ -958,6 +1107,111 @@
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 sendMessageBtn.click();
+            }
+        });
+        
+        // 数据导入导出功能
+        const exportDataBtn = document.getElementById('exportDataBtn');
+        const importDataBtn = document.getElementById('importDataBtn');
+        const importFileInput = document.getElementById('importFile');
+        const resetDataBtn = document.getElementById('resetDataBtn');
+        const resetModal = document.getElementById('resetModal');
+        const confirmResetBtn = document.getElementById('confirmResetBtn');
+        const cancelResetBtn = document.getElementById('cancelResetBtn');
+        
+        // 导出数据
+        exportDataBtn.addEventListener('click', function() {
+            // 收集所有数据
+            const exportData = {
+                names: JSON.parse(localStorage.getItem('loveWallNames') || '{}'),
+                dates: JSON.parse(localStorage.getItem('loveWallDates') || '{}'),
+                photos: JSON.parse(localStorage.getItem('loveWallPhotos') || '[]'),
+                messages: JSON.parse(localStorage.getItem('loveWallMessages') || '[]'),
+                exportDate: new Date().toISOString(),
+                version: '1.0'
+            };
+            
+            // 创建并下载JSON文件
+            const dataStr = JSON.stringify(exportData, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `爱情留言墙数据_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            alert('数据导出成功！');
+        });
+        
+        // 导入数据
+        importDataBtn.addEventListener('click', function() {
+            importFileInput.click();
+        });
+        
+        importFileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    try {
+                        const importData = JSON.parse(event.target.result);
+                        
+                        // 验证数据格式
+                        if (!importData.names || !importData.dates || !importData.photos || !importData.messages) {
+                            throw new Error('文件格式不正确');
+                        }
+                        
+                        // 确认导入
+                        if (confirm('导入数据将覆盖当前所有数据，确定要继续吗？')) {
+                            // 保存导入的数据
+                            localStorage.setItem('loveWallNames', JSON.stringify(importData.names));
+                            localStorage.setItem('loveWallDates', JSON.stringify(importData.dates));
+                            localStorage.setItem('loveWallPhotos', JSON.stringify(importData.photos));
+                            localStorage.setItem('loveWallMessages', JSON.stringify(importData.messages));
+                            
+                            // 重新加载页面数据
+                            location.reload();
+                        }
+                    } catch (error) {
+                        alert('导入失败：文件格式不正确或已损坏');
+                        console.error('导入错误:', error);
+                    }
+                };
+                reader.readAsText(file);
+                
+                // 重置文件输入
+                importFileInput.value = '';
+            }
+        });
+        
+        // 重置数据
+        resetDataBtn.addEventListener('click', function() {
+            resetModal.style.display = 'flex';
+        });
+        
+        confirmResetBtn.addEventListener('click', function() {
+            // 清除所有本地存储数据
+            localStorage.removeItem('loveWallNames');
+            localStorage.removeItem('loveWallDates');
+            localStorage.removeItem('loveWallPhotos');
+            localStorage.removeItem('loveWallMessages');
+            
+            // 重新加载页面
+            location.reload();
+        });
+        
+        cancelResetBtn.addEventListener('click', function() {
+            resetModal.style.display = 'none';
+        });
+        
+        // 点击模态框外部关闭
+        window.addEventListener('click', function(event) {
+            if (event.target === resetModal) {
+                resetModal.style.display = 'none';
             }
         });
         
