@@ -98,6 +98,27 @@
             line-height: 1.6;
         }
         
+        /* 连接状态样式 */
+        .connection-status {
+            margin: 10px auto;
+            padding: 8px 15px;
+            border-radius: 20px;
+            background: rgba(255, 107, 149, 0.1);
+            display: inline-block;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        .connection-status.connected {
+            background: rgba(76, 175, 80, 0.1);
+            color: #4CAF50;
+        }
+
+        .connection-status.error {
+            background: rgba(244, 67, 54, 0.1);
+            color: #f44336;
+        }
+        
         .music-player {
             position: absolute;
             top: 20px;
@@ -699,6 +720,11 @@
             </div>
             <p>记录我们在一起的每一个美好瞬间，随时随地添加照片 ❤️</p>
             
+            <!-- 连接状态显示 -->
+            <div class="connection-status">
+                <span id="connectionStatus">检查连接中...</span>
+            </div>
+            
             <div class="music-player">
                 <button id="playBtn">
                     <i class="fas fa-play"></i>
@@ -814,7 +840,7 @@
         // ==================== Supabase 配置 ====================
         // 请替换为你的 Supabase 项目 URL 和 anon key
         const SUPABASE_URL = 'https://znfubzbpecoslijnkxlg.supabase.co'; // 替换为你的 Supabase URL
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuZnViemJwZWNvc2xpam5reGxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2MDM5NjIsImV4cCI6MjA3NjE3OTk2Mn0.pmyXOt3iT5hMg9lQ9N-ZpsEu_8754Q9TSnqV7TWgHR8; // 替换为你的 Supabase anon key
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuZnViemJwZWNvc2xpam5reGxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2MDM5NjIsImV4cCI6MjA3NjE3OTk2Mn0.pmyXOt3iT5hMg9lQ9N-ZpsEu_8754Q9TSnqV7TWgHR8'; // 替换为你的 Supabase anon key
         
         // 初始化 Supabase 客户端
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -1037,6 +1063,55 @@
         // 留言数组 - 现在从 Supabase 加载
         let messages = [];
         
+        // 测试 Supabase 连接
+        async function testConnection() {
+            const statusElement = document.getElementById('connectionStatus');
+            
+            try {
+                statusElement.textContent = '正在连接数据库...';
+                statusElement.className = 'connection-status';
+                
+                // 测试 1: 基础连接
+                const { data: testData, error: testError } = await supabase
+                    .from('messages')
+                    .select('count')
+                    .limit(1);
+                    
+                if (testError) {
+                    throw new Error(`数据库连接失败: ${testError.message}`);
+                }
+                
+                statusElement.textContent = '数据库连接成功 ✓';
+                statusElement.className = 'connection-status connected';
+                
+                // 测试 2: 检查表是否存在
+                const { data: tableData, error: tableError } = await supabase
+                    .from('messages')
+                    .select('*')
+                    .limit(1);
+                    
+                if (tableError && tableError.code === '42P01') {
+                    throw new Error('messages 表不存在，请先执行 SQL 创建表');
+                }
+                
+                statusElement.textContent = '数据库和表检查完成 ✓';
+                
+                return true;
+                
+            } catch (error) {
+                console.error('连接测试失败:', error);
+                statusElement.textContent = `连接失败: ${error.message}`;
+                statusElement.className = 'connection-status error';
+                
+                // 显示详细错误信息
+                setTimeout(() => {
+                    alert(`连接错误详情:\n${error.message}\n\n请检查:\n1. Supabase URL 和 Key 是否正确\n2. 是否已执行 SQL 创建表\n3. 网络连接是否正常`);
+                }, 1000);
+                
+                return false;
+            }
+        }
+
         // 从 Supabase 加载留言
         async function loadMessagesFromSupabase() {
             try {
@@ -1342,9 +1417,18 @@
             renderPhotos();
             addHearts();
             
-            // 加载留言并启动实时同步
-            await loadMessagesFromSupabase();
-            setupRealtimeSubscription();
+            // 测试连接
+            const connectionOk = await testConnection();
+            
+            if (connectionOk) {
+                // 加载留言并启动实时同步
+                await loadMessagesFromSupabase();
+                setupRealtimeSubscription();
+            } else {
+                // 连接失败，显示错误信息
+                document.getElementById('sendMessageBtn').disabled = true;
+                document.getElementById('messageInput').placeholder = '数据库连接失败，无法发送消息';
+            }
             
             // 每秒更新计时器
             setInterval(updateCounters, 1000);
@@ -1367,7 +1451,6 @@
     </script>
 </body>
 </html>
-</body>
-</html>
+
 
 
