@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>我们的爱情留言墙</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- 引入 Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * {
             margin: 0;
@@ -792,7 +794,7 @@
         </div>
         
         <div class="footer">
-            <p>我们的爱情留言墙 · 数据将永久保存在本地</p>
+            <p>我们的爱情留言墙 · 消息实时同步</p>
         </div>
     </div>
 
@@ -809,6 +811,17 @@
     </div>
 
     <script>
+        // ==================== Supabase 配置 ====================
+        // 请替换为你的 Supabase 项目 URL 和 anon key
+        const SUPABASE_URL = 'https://znfubzbpecoslijnkxlg.supabase.co'; // 替换为你的 Supabase URL
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuZnViemJwZWNvc2xpam5reGxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2MDM5NjIsImV4cCI6MjA3NjE3OTk2Mn0.pmyXOt3iT5hMg9lQ9N-ZpsEu_8754Q9TSnqV7TWgHR8'; // 替换为你的 Supabase anon key
+        
+        // 初始化 Supabase 客户端
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        // 情侣对标识 - 你们共用的唯一ID
+        const LOVE_PAIR_ID = 'WYHHTQ'; // 可以改为你们专属的ID
+
         // 背景音乐控制
         const bgMusic = document.getElementById('bgMusic');
         const playBtn = document.getElementById('playBtn');
@@ -1014,22 +1027,130 @@
         uploadLocalBtn.addEventListener('click', uploadLocalPhoto);
         uploadUrlBtn.addEventListener('click', addPhotoByUrl);
         
-        // 留言功能
+        // ==================== 留言功能 (使用 Supabase) ====================
         const messageInput = document.getElementById('messageInput');
         const sendMessageBtn = document.getElementById('sendMessageBtn');
         const messagesContainer = document.getElementById('messagesContainer');
         const authorButtons = document.querySelectorAll('.author-btn');
         let currentAuthor = 'lover1';
         
-        // 从本地存储加载留言或使用默认留言
-        // ==================== 在这里修改默认留言 ====================
-        let messages = JSON.parse(localStorage.getItem('loveWallMessages')) || [
-
-        ];
+        // 留言数组 - 现在从 Supabase 加载
+        let messages = [];
         
-        // 保存留言到本地存储
-        function saveMessages() {
-            localStorage.setItem('loveWallMessages', JSON.stringify(messages));
+        // 从 Supabase 加载留言
+        async function loadMessagesFromSupabase() {
+            try {
+                const { data: messagesData, error } = await supabase
+                    .from('messages')
+                    .select('*')
+                    .eq('love_pair_id', LOVE_PAIR_ID)
+                    .order('created_at', { ascending: false });
+
+                if (error) {
+                    console.error('加载留言错误:', error);
+                    return;
+                }
+
+                // 转换数据格式
+                const formattedMessages = messagesData.map(msg => ({
+                    id: msg.id,
+                    author: msg.author,
+                    content: msg.content,
+                    date: new Date(msg.created_at).toLocaleString('zh-CN')
+                }));
+
+                messages = formattedMessages;
+                renderMessages();
+            } catch (error) {
+                console.error('加载留言失败:', error);
+            }
+        }
+
+        // 发送留言到 Supabase
+        async function sendMessageToSupabase(content, author) {
+            try {
+                const { data, error } = await supabase
+                    .from('messages')
+                    .insert([
+                        {
+                            love_pair_id: LOVE_PAIR_ID,
+                            author: author,
+                            content: content,
+                            created_at: new Date().toISOString()
+                        }
+                    ])
+                    .select();
+
+                if (error) {
+                    console.error('发送留言错误:', error);
+                    alert('发送失败，请重试');
+                    return;
+                }
+
+                console.log('留言发送成功:', data);
+                // 实时订阅会自动更新界面，所以这里不需要手动重新加载
+            } catch (error) {
+                console.error('发送留言失败:', error);
+                alert('发送失败，请检查网络连接');
+            }
+        }
+
+        // 从 Supabase 删除留言
+        async function deleteMessageFromSupabase(messageId) {
+            try {
+                const { error } = await supabase
+                    .from('messages')
+                    .delete()
+                    .eq('id', messageId)
+                    .eq('love_pair_id', LOVE_PAIR_ID); // 确保只能删除自己的留言
+
+                if (error) {
+                    console.error('删除留言错误:', error);
+                    return;
+                }
+
+                console.log('留言删除成功');
+            } catch (error) {
+                console.error('删除留言失败:', error);
+            }
+        }
+
+        // 设置实时订阅
+        function setupRealtimeSubscription() {
+            const subscription = supabase
+                .channel('messages-changes')
+                .on(
+                    'postgres_changes',
+                    {
+                        event: '*', // 监听所有操作：INSERT, UPDATE, DELETE
+                        schema: 'public',
+                        table: 'messages',
+                        filter: `love_pair_id=eq.${LOVE_PAIR_ID}`
+                    },
+                    (payload) => {
+                        console.log('收到实时更新:', payload);
+                        
+                        // 根据操作类型更新界面
+                        if (payload.eventType === 'INSERT') {
+                            // 新留言
+                            const newMessage = {
+                                id: payload.new.id,
+                                author: payload.new.author,
+                                content: payload.new.content,
+                                date: new Date(payload.new.created_at).toLocaleString('zh-CN')
+                            };
+                            messages.unshift(newMessage);
+                        } else if (payload.eventType === 'DELETE') {
+                            // 删除留言
+                            messages = messages.filter(msg => msg.id !== payload.old.id);
+                        }
+                        
+                        renderMessages();
+                    }
+                )
+                .subscribe();
+
+            return subscription;
         }
         
         // 设置当前作者
@@ -1044,10 +1165,8 @@
         // 渲染留言
         function renderMessages() {
             messagesContainer.innerHTML = '';
-            // 按日期倒序排列留言
-            const sortedMessages = [...messages].sort((a, b) => new Date(b.date) - new Date(a.date));
             
-            sortedMessages.forEach(message => {
+            messages.forEach(message => {
                 const messageItem = document.createElement('div');
                 messageItem.className = 'message-item';
                 
@@ -1069,32 +1188,22 @@
             
             // 添加删除留言事件监听
             document.querySelectorAll('.delete-message').forEach(button => {
-                button.addEventListener('click', function() {
+                button.addEventListener('click', async function() {
                     const id = parseInt(this.getAttribute('data-id'));
-                    messages = messages.filter(message => message.id !== id);
-                    saveMessages();
-                    renderMessages();
+                    await deleteMessageFromSupabase(id);
+                    // 实时订阅会自动更新界面
                 });
             });
         }
         
         // 发送新留言
-        sendMessageBtn.addEventListener('click', function() {
+        sendMessageBtn.addEventListener('click', async function() {
             const content = messageInput.value.trim();
             if (content) {
-                const now = new Date();
-                const dateStr = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+                // 根据当前选择的作者发送
+                const author = currentAuthor; // 'lover1' 或 'lover2'
                 
-                const newMessage = {
-                    id: Date.now(),
-                    author: currentAuthor,
-                    content: content,
-                    date: dateStr
-                };
-                
-                messages.push(newMessage);
-                saveMessages();
-                renderMessages();
+                await sendMessageToSupabase(content, author);
                 messageInput.value = '';
                 
                 // 滚动到最新留言
@@ -1126,7 +1235,7 @@
                 names: JSON.parse(localStorage.getItem('loveWallNames') || '{}'),
                 dates: JSON.parse(localStorage.getItem('loveWallDates') || '{}'),
                 photos: JSON.parse(localStorage.getItem('loveWallPhotos') || '[]'),
-                messages: JSON.parse(localStorage.getItem('loveWallMessages') || '[]'),
+                messages: messages, // 使用当前内存中的消息
                 exportDate: new Date().toISOString(),
                 version: '1.0'
             };
@@ -1167,11 +1276,10 @@
                         
                         // 确认导入
                         if (confirm('导入数据将覆盖当前所有数据，确定要继续吗？')) {
-                            // 保存导入的数据
+                            // 保存导入的数据到本地存储
                             localStorage.setItem('loveWallNames', JSON.stringify(importData.names));
                             localStorage.setItem('loveWallDates', JSON.stringify(importData.dates));
                             localStorage.setItem('loveWallPhotos', JSON.stringify(importData.photos));
-                            localStorage.setItem('loveWallMessages', JSON.stringify(importData.messages));
                             
                             // 重新加载页面数据
                             location.reload();
@@ -1198,7 +1306,6 @@
             localStorage.removeItem('loveWallNames');
             localStorage.removeItem('loveWallDates');
             localStorage.removeItem('loveWallPhotos');
-            localStorage.removeItem('loveWallMessages');
             
             // 重新加载页面
             location.reload();
@@ -1230,25 +1337,36 @@
         }
         
         // 初始化
-        updateCounters();
-        renderPhotos();
-        renderMessages();
-        addHearts();
+        async function init() {
+            updateCounters();
+            renderPhotos();
+            addHearts();
+            
+            // 加载留言并启动实时同步
+            await loadMessagesFromSupabase();
+            setupRealtimeSubscription();
+            
+            // 每秒更新计时器
+            setInterval(updateCounters, 1000);
+            
+            // 尝试自动播放音乐（需要用户交互）
+            document.addEventListener('click', function() {
+                if (bgMusic.paused) {
+                    bgMusic.play().then(() => {
+                        playBtn.innerHTML = '<i class="fas fa-pause"></i>';
+                        songTitle.textContent = '正在播放: 浪漫的旋律';
+                    }).catch(() => {
+                        // 自动播放被阻止，需要用户手动点击
+                    });
+                }
+            }, { once: true });
+        }
         
-        // 每秒更新计时器
-        setInterval(updateCounters, 1000);
-        
-        // 尝试自动播放音乐（需要用户交互）
-        document.addEventListener('click', function() {
-            if (bgMusic.paused) {
-                bgMusic.play().then(() => {
-                    playBtn.innerHTML = '<i class="fas fa-pause"></i>';
-                    songTitle.textContent = '正在播放: 浪漫的旋律';
-                }).catch(() => {
-                    // 自动播放被阻止，需要用户手动点击
-                });
-            }
-        }, { once: true });
+        // 启动初始化
+        init();
     </script>
 </body>
 </html>
+</body>
+</html>
+
